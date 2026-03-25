@@ -644,6 +644,9 @@ async def stats_mod(i: discord.Interaction, staff: discord.Member = None):
     e.set_footer(text=f"✦ Solicitado por {i.user}  •  {ts()}", icon_url=i.user.display_avatar.url)
     await i.response.send_message(embed=e, ephemeral=True)
 
+import discord
+from discord.ui import View, Select
+
 # --- Sistema de tickets ---
 TIPOS_TICKET = {
     "soporte_general":     ("Soporte General",      "<:member:1485682448300904668>"),
@@ -652,19 +655,109 @@ TIPOS_TICKET = {
     "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
 }
 
+# --- Select del panel ---
+class TicketSelect(Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="Soporte General",
+                value="soporte_general",
+                description="Consultas generales",
+                emoji="<:member:1485682448300904668>"
+            ),
+            discord.SelectOption(
+                label="Soporte Técnico",
+                value="soporte_tecnico",
+                description="Problemas técnicos o bugs",
+                emoji="<:Developer:1485682311373656326>"
+            ),
+            discord.SelectOption(
+                label="Reclamar Beneficios",
+                value="reclamar_beneficios",
+                description="Beneficios VIP u otros premios",
+                emoji="<:Vip:1485682412179554355>"
+            ),
+            discord.SelectOption(
+                label="Solicitar Superiores",
+                value="solicitar_superiores",
+                description="Contactar administración",
+                emoji="<:Owner:1485682488952098917>"
+            ),
+        ]
+
+        super().__init__(
+            placeholder="📋 Seleccioná el tipo de ticket...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
+
+        guild = interaction.guild
+        user = interaction.user
+
+        # Nombre del canal
+        nombre_canal = f"{tipo_nombre.lower().replace(' ', '-')}-{user.name}"
+
+        # Crear canal
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True)
+        }
+
+        canal = await guild.create_text_channel(
+            name=nombre_canal,
+            overwrites=overwrites
+        )
+
+        # Mensaje dentro del ticket
+        embed = discord.Embed(
+            title=f"{emoji} Ticket - {tipo_nombre}",
+            description=f"{user.mention}, un staff te atenderá pronto.\n\n"
+                        f"**Tipo:** {tipo_nombre}",
+            color=discord.Color.green()
+        )
+
+        await canal.send(content=user.mention, embed=embed)
+
+        # Respuesta al usuario
+        await interaction.response.send_message(
+            f"✅ Tu ticket fue creado: {canal.mention}",
+            ephemeral=True
+        )
+
+# --- Vista del panel ---
+class TicketPanelView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
+
+# --- Enviar panel ---
 async def enviar_panel_tickets(canal, guild):
-    e = discord.Embed(title="🎫  Centro de Soporte",
-                      description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
-                                  "Seleccioná la categoría correspondiente en el menú de abajo.\n"
-                                  "Un miembro del staff te atenderá a la brevedad.",
-                      color=discord.Color.from_str("#5865F2"))
-    if guild.icon: e.set_thumbnail(url=guild.icon.url)
-    e.add_field(name="❓  Soporte General",     value="Consultas generales del servidor.",          inline=False)
-    e.add_field(name="🛠️  Soporte Técnico",  value="Problemas técnicos o bugs.",                 inline=False)
-    e.add_field(name="💫  Reclamar Beneficios",    value="Reclamá tus beneficios VIP u otros premios.",inline=False)
-    e.add_field(name="👑  Solicitar Superiores", value="Contacto directo con la administración.",    inline=False)
-    e.set_footer(text=f"{guild.name}  •  Solo abrí un ticket si realmente lo necesitás.",
-                 icon_url=guild.icon.url if guild.icon else None)
+    e = discord.Embed(
+        title="🎫 Centro de Soporte",
+        description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
+                    "Seleccioná la categoría correspondiente en el menú de abajo.\n"
+                    "Un miembro del staff te atenderá a la brevedad.",
+        color=discord.Color.from_str("#5865F2")
+    )
+
+    if guild.icon:
+        e.set_thumbnail(url=guild.icon.url)
+
+    e.add_field(name="❓ Soporte General", value="Consultas generales del servidor.", inline=False)
+    e.add_field(name="🛠️ Soporte Técnico", value="Problemas técnicos o bugs.", inline=False)
+    e.add_field(name="💫 Reclamar Beneficios", value="Reclamá tus beneficios VIP u otros premios.", inline=False)
+    e.add_field(name="👑 Solicitar Superiores", value="Contacto directo con la administración.", inline=False)
+
+    e.set_footer(
+        text=f"{guild.name} • Solo abrí un ticket si realmente lo necesitás.",
+        icon_url=guild.icon.url if guild.icon else None
+    )
+
     await canal.send(embed=e, view=TicketPanelView())
 
 class CerrarTicketModal(discord.ui.Modal, title="🔒 Cerrar ticket"):
