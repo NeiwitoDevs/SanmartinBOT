@@ -770,66 +770,73 @@ class TicketSelect(discord.ui.Select):
         )
 
 async def callback(self, i: discord.Interaction):
-    await i.response.defer(ephemeral=True)  # 🔥 FIX PRINCIPAL
+    await i.response.defer(ephemeral=True)  # 🔥 SIEMPRE PRIMERO
 
-    tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
+    try:
+        tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
 
-    tdata = cargar_tickets()
-    uid = str(i.user.id)
+        tdata = cargar_tickets()
+        uid = str(i.user.id)
 
-    for ch_id, info in list(tdata["tickets"].items()):
-        if info.get("user_id") == uid:
-            c = i.guild.get_channel(int(ch_id))
-            if c:
-                return await i.followup.send(
-                    f"❌ Ya tenés un ticket abierto: {c.mention}",
-                    ephemeral=True
-                )
+        for ch_id, info in list(tdata["tickets"].items()):
+            if info.get("user_id") == uid:
+                c = i.guild.get_channel(int(ch_id))
+                if c:
+                    return await i.followup.send(
+                        f"❌ Ya tenés un ticket abierto: {c.mention}",
+                        ephemeral=True
+                    )
 
-    tdata["counter"] += 1
-    numero = f"{tdata['counter']:03d}"
+        tdata["counter"] += 1
+        numero = f"{tdata['counter']:03d}"
 
-    overwrites = {
-        i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-    }
+        overwrites = {
+            i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+        }
 
-    role = i.guild.get_role(STAFF_ROLE_ID)
-    if role:
-        overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        role = i.guild.get_role(STAFF_ROLE_ID)
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
 
-    categoria = i.guild.get_channel(1486148358228672582)
+        categoria = i.guild.get_channel(1486148358228672582)
 
-    canal = await i.guild.create_text_channel(
-        name=f"ticket-{numero}",
-        overwrites=overwrites,
-        category=categoria
-    )
+        canal = await i.guild.create_text_channel(
+            name=f"ticket-{numero}",
+            overwrites=overwrites,
+            category=categoria
+        )
 
-    tdata["tickets"][str(canal.id)] = {
-        "user_id": uid,
-        "tipo": tipo_nombre,
-        "numero": numero
-    }
+        tdata["tickets"][str(canal.id)] = {
+            "user_id": uid,
+            "tipo": tipo_nombre,
+            "numero": numero
+        }
 
-    guardar_tickets(tdata)
+        guardar_tickets(tdata)
 
-    embed = discord.Embed(
-        title=f"{emoji} Ticket #{numero} — {tipo_nombre}",
-        description=f"{i.user.mention}, describí tu problema.",
-        color=discord.Color.from_str("#5865F2")
-    )
+        embed = discord.Embed(
+            title=f"{emoji} Ticket #{numero} — {tipo_nombre}",
+            description=f"{i.user.mention}, describí tu problema.",
+            color=discord.Color.from_str("#5865F2")
+        )
 
-    await canal.send(
-        content=f"{i.user.mention} <@&{STAFF_ROLE_ID}>",
-        embed=embed,
-        view=TicketActionView()
-    )
+        await canal.send(
+            content=f"{i.user.mention} <@&{STAFF_ROLE_ID}>",
+            embed=embed,
+            view=TicketActionView()
+        )
 
-    await i.followup.send(
-        f"✅ Ticket creado: {canal.mention}",
-        ephemeral=True
-    )
+        await i.followup.send(
+            f"✅ Ticket creado: {canal.mention}",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await i.followup.send(
+            f"❌ Error al crear el ticket:\n```{e}```",
+            ephemeral=True
+        )
 
 class TicketPanelView(discord.ui.View):
     def __init__(self):
