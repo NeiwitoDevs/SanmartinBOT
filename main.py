@@ -769,8 +769,8 @@ class TicketSelect(discord.ui.Select):
             ]
         )
 
-    async def callback(self, i: discord.Interaction):
-    # 🔥 FIX 1: evitar error de tiempo
+async def callback(self, i: discord.Interaction):
+
     await i.response.defer(ephemeral=True)
 
     tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
@@ -827,10 +827,10 @@ class TicketSelect(discord.ui.Select):
         view=TicketActionView()
     )
 
- 
     await i.followup.send(
         f"✅ Ticket creado: {canal.mention}",
         ephemeral=True
+    )
 
 class TicketPanelView(discord.ui.View):
     def __init__(self):
