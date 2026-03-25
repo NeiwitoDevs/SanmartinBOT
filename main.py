@@ -648,6 +648,7 @@ import discord
 from discord.ui import View, Select
 
 # --- Sistema de tickets ---
+# --- TIPOS ---
 TIPOS_TICKET = {
     "soporte_general":     ("Soporte General",      "<:member:1485682448300904668>"),
     "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),
@@ -655,227 +656,120 @@ TIPOS_TICKET = {
     "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
 }
 
-# --- Select del panel ---
-class TicketSelect(Select):
+# --- SELECT (ÚNICO Y CORRECTO) ---
+class TicketSelect(discord.ui.Select):
     def __init__(self):
-        options = [
-            discord.SelectOption(
-                label="Soporte General",
-                value="soporte_general",
-                description="Consultas generales",
-                emoji="<:member:1485682448300904668>"
-            ),
-            discord.SelectOption(
-                label="Soporte Técnico",
-                value="soporte_tecnico",
-                description="Problemas técnicos o bugs",
-                emoji="<:Developer:1485682311373656326>"
-            ),
-            discord.SelectOption(
-                label="Reclamar Beneficios",
-                value="reclamar_beneficios",
-                description="Beneficios VIP u otros premios",
-                emoji="<:Vip:1485682412179554355>"
-            ),
-            discord.SelectOption(
-                label="Solicitar Superiores",
-                value="solicitar_superiores",
-                description="Contactar administración",
-                emoji="<:Owner:1485682488952098917>"
-            ),
-        ]
-
         super().__init__(
             placeholder="📋 Seleccioná el tipo de ticket...",
             min_values=1,
             max_values=1,
-            options=options
+            custom_id="ticket_panel_select",
+            options=[
+                discord.SelectOption(
+                    label="Soporte General",
+                    value="soporte_general",
+                    description="Consultas generales",
+                    emoji=discord.PartialEmoji(name="member", id=1485682448300904668)
+                ),
+                discord.SelectOption(
+                    label="Soporte Técnico",
+                    value="soporte_tecnico",
+                    description="Problemas técnicos o bugs",
+                    emoji=discord.PartialEmoji(name="Developer", id=1485682311373656326)
+                ),
+                discord.SelectOption(
+                    label="Reclamar Beneficios",
+                    value="reclamar_beneficios",
+                    description="Beneficios VIP u otros premios",
+                    emoji=discord.PartialEmoji(name="Vip", id=1485682412179554355)
+                ),
+                discord.SelectOption(
+                    label="Solicitar Superiores",
+                    value="solicitar_superiores",
+                    description="Contactar administración",
+                    emoji=discord.PartialEmoji(name="Owner", id=1485682488952098917)
+                ),
+            ]
         )
-
-    async def callback(self, interaction: discord.Interaction):
-        tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
-
-        guild = interaction.guild
-        user = interaction.user
-
-        # Nombre del canal
-        nombre_canal = f"{tipo_nombre.lower().replace(' ', '-')}-{user.name}"
-
-        # Crear canal
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True)
-        }
-
-        canal = await guild.create_text_channel(
-            name=nombre_canal,
-            overwrites=overwrites
-        )
-
-        # Mensaje dentro del ticket
-        embed = discord.Embed(
-            title=f"{emoji} Ticket - {tipo_nombre}",
-            description=f"{user.mention}, un staff te atenderá pronto.\n\n"
-                        f"**Tipo:** {tipo_nombre}",
-            color=discord.Color.green()
-        )
-
-        await canal.send(content=user.mention, embed=embed)
-
-        # Respuesta al usuario
-        await interaction.response.send_message(
-            f"✅ Tu ticket fue creado: {canal.mention}",
-            ephemeral=True
-        )
-
-# --- Vista del panel ---
-class TicketPanelView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(TicketSelect())
-
-# --- Enviar panel ---
-async def enviar_panel_tickets(canal, guild):
-    e = discord.Embed(
-        title="🎫 Centro de Soporte",
-        description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
-                    "Seleccioná la categoría correspondiente en el menú de abajo.\n"
-                    "Un miembro del staff te atenderá a la brevedad.",
-        color=discord.Color.from_str("#5865F2")
-    )
-
-    if guild.icon:
-        e.set_thumbnail(url=guild.icon.url)
-
-    e.add_field(name="❓ Soporte General", value="Consultas generales del servidor.", inline=False)
-    e.add_field(name="🛠️ Soporte Técnico", value="Problemas técnicos o bugs.", inline=False)
-    e.add_field(name="💫 Reclamar Beneficios", value="Reclamá tus beneficios VIP u otros premios.", inline=False)
-    e.add_field(name="👑 Solicitar Superiores", value="Contacto directo con la administración.", inline=False)
-
-    e.set_footer(
-        text=f"{guild.name} • Solo abrí un ticket si realmente lo necesitás.",
-        icon_url=guild.icon.url if guild.icon else None
-    )
-
-    await canal.send(embed=e, view=TicketPanelView())
-
-class CerrarTicketModal(discord.ui.Modal, title="🔒 Cerrar ticket"):
-    motivo = discord.ui.TextInput(label="Motivo del cierre", style=discord.TextStyle.paragraph, max_length=300)
-
-    async def on_submit(self, i: discord.Interaction):
-        tdata = cargar_tickets(); ch_id = str(i.channel_id); info = tdata["tickets"].get(ch_id)
-        e = discord.Embed(title="🔒 Ticket cerrado",
-                          description="Cerrado por el staff. El canal se eliminará en **5 segundos**.",
-                          color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
-        e.add_field(name="👮 Cerrado por", value=i.user.mention,                                                     inline=True)
-        e.add_field(name="📋 Tipo",        value=info.get("tipo","?") if info else "?",                             inline=True)
-        e.add_field(name="🆔 Número",      value=f"`#{info.get('numero','?')}`" if info else "?",                   inline=True)
-        e.add_field(name="📝 Motivo",      value=self.motivo.value,                                                 inline=False)
-        e.set_footer(text=ts())
-        await i.response.send_message(embed=e)
-        if ch_id in tdata["tickets"]: del tdata["tickets"][ch_id]; guardar_tickets(tdata)
-        await asyncio.sleep(5)
-        try: await i.channel.delete()
-        except: pass
-
-class TicketActionView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=None)
-
-    @discord.ui.button(label="✋ Reclamar ticket", style=discord.ButtonStyle.success, custom_id="ticket_claim_btn")
-    async def claim_btn(self, i: discord.Interaction, b):
-        if not es_staff(i.user): return await i.response.send_message("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
-        tdata = cargar_tickets(); info = tdata["tickets"].get(str(i.channel_id))
-        if info: info["reclamado_por"] = str(i.user.id); guardar_tickets(tdata)
-        e = discord.Embed(title="✋ Ticket reclamado",
-                          description=f"{i.user.mention} tomó a cargo este ticket y lo atenderá a la brevedad.",
-                          color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
-        e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url); e.set_footer(text=ts())
-        await i.response.send_message(embed=e)
-
-    @discord.ui.button(label="🔒 Cerrar ticket", style=discord.ButtonStyle.danger, custom_id="ticket_close_btn")
-    async def close_btn(self, i: discord.Interaction, b):
-        if not es_staff(i.user): return await i.response.send_message("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
-        await i.response.send_modal(CerrarTicketModal())
-
-class TicketSelect(discord.ui.Select):
-    def __init__(self):
-        super().__init__(placeholder="📋  Seleccioná el tipo de ticket...", min_values=1, max_values=1,
-                         custom_id="ticket_panel_select", options=[
-            discord.SelectOption(label="Soporte General",      value="soporte_general",      emoji=discord.PartialEmoji(name="member",    id=1485682448300904668), description="Consultas generales"),
-            discord.SelectOption(label="Soporte Técnico",      value="soporte_tecnico",      emoji=discord.PartialEmoji(name="Developer",  id=1485682311373656326), description="Problemas técnicos o bugs"),
-            discord.SelectOption(label="Reclamar Beneficios",  value="reclamar_beneficios",  emoji=discord.PartialEmoji(name="Vip",        id=1485682412179554355), description="Beneficios VIP u otros premios"),
-            discord.SelectOption(label="Solicitar Superiores", value="solicitar_superiores", emoji=discord.PartialEmoji(name="Owner",      id=1485682488952098917), description="Contactar administración"),
-        ])
 
     async def callback(self, i: discord.Interaction):
-        tipo_nombre, emoji_name, emoji_id = TIPOS_TICKET[self.values[0]]
-        tdata = cargar_tickets(); uid = str(i.user.id)
+        # 🔥 FIX IMPORTANTE (sin emoji_id)
+        tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
+
+        tdata = cargar_tickets()
+        uid = str(i.user.id)
+
+        # Evitar múltiples tickets
         for ch_id, info in list(tdata["tickets"].items()):
             if info.get("user_id") == uid:
                 c = i.guild.get_channel(int(ch_id))
-                if c: return await i.response.send_message(f"❌ Ya tenés un ticket abierto: {c.mention}", ephemeral=True)
-                del tdata["tickets"][ch_id]; guardar_tickets(tdata); break
-        tdata["counter"] += 1; numero = f"{tdata['counter']:03d}"
+                if c:
+                    return await i.response.send_message(
+                        f"❌ Ya tenés un ticket abierto: {c.mention}",
+                        ephemeral=True
+                    )
+                del tdata["tickets"][ch_id]
+                guardar_tickets(tdata)
+                break
+
+        tdata["counter"] += 1
+        numero = f"{tdata['counter']:03d}"
+
         overwrites = {
             i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True),
+            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
         }
+
         role = i.guild.get_role(STAFF_ROLE_ID)
-        if role: overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
-        categoria = i.guild.get_channel(1486148358228672582)
-        try:
-            canal = await i.guild.create_text_channel(f"ticket-{numero}", overwrites=overwrites, category=categoria,
-                                                       reason=f"Ticket #{numero} — {i.user} — {tipo_nombre}")
-        except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para crear el canal.", ephemeral=True)
-        tdata["tickets"][str(canal.id)] = {"user_id": uid, "tipo": tipo_nombre, "numero": numero, "guild_id": str(i.guild.id), "fecha": ts()}
+        if role:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+        categoria = i.guild.get_channel(TICKET_CATEGORY_ID)
+
+        canal = await i.guild.create_text_channel(
+            name=f"ticket-{numero}",
+            overwrites=overwrites,
+            category=categoria,
+            reason=f"Ticket #{numero} — {i.user} — {tipo_nombre}"
+        )
+
+        # Guardar ticket
+        tdata["tickets"][str(canal.id)] = {
+            "user_id": uid,
+            "tipo": tipo_nombre,
+            "numero": numero,
+            "guild_id": str(i.guild.id),
+            "fecha": ts()
+        }
         guardar_tickets(tdata)
-        e = discord.Embed(title=f"<:{emoji_name}:{emoji_id}>  Ticket #{numero} — {tipo_nombre}",
-                          description=f"¡Hola {i.user.mention}! Tu ticket fue creado.\nDescribí tu consulta con el mayor detalle posible.",
-                          color=discord.Color.from_str("#5865F2"), timestamp=datetime.now(timezone.utc))
-        e.set_thumbnail(url=i.user.display_avatar.url)
-        e.add_field(name="👤 Abierto por", value=f"{i.user.mention} (`{i.user}`)", inline=True)
-        e.add_field(name="📋 Categoría",   value=tipo_nombre,                      inline=True)
-        e.add_field(name="🆔 Número",      value=f"`#{numero}`",                   inline=True)
-        e.add_field(name="📌 Instrucciones",
-                    value="• Describí tu caso claramente.\n• Adjuntá capturas si es necesario.\n• Sé respetuoso con el staff.", inline=False)
-        e.set_footer(text=f"Abierto el {ts()}")
-        await canal.send(content=f"{i.user.mention} — <@&{STAFF_ROLE_ID}>", embed=e, view=TicketActionView())
-        await i.response.send_message(f"✅ Ticket creado correctamente: {canal.mention}", ephemeral=True)
 
+        # 🔥 EMBED ARREGLADO (usa emoji directo)
+        embed = discord.Embed(
+            title=f"{emoji} Ticket #{numero} — {tipo_nombre}",
+            description=f"¡Hola {i.user.mention}! Tu ticket fue creado.\nDescribí tu consulta.",
+            color=discord.Color.from_str("#5865F2")
+        )
+
+        embed.add_field(name="👤 Usuario", value=i.user.mention)
+        embed.add_field(name="📋 Tipo", value=tipo_nombre)
+        embed.add_field(name="🆔 Ticket", value=f"#{numero}")
+
+        await canal.send(
+            content=f"{i.user.mention} <@&{STAFF_ROLE_ID}>",
+            embed=embed,
+            view=TicketActionView()
+        )
+
+        await i.response.send_message(
+            f"✅ Ticket creado: {canal.mention}",
+            ephemeral=True
+        )
+
+# --- PANEL VIEW (ÚNICO) ---
 class TicketPanelView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=None); self.add_item(TicketSelect())
-
-class ConfirmarResetCountView(discord.ui.View):
-    def __init__(self, contador_actual):
-        super().__init__(timeout=30); self.contador_actual = contador_actual
-
-    def _disable(self):
-        for item in self.children: item.disabled = True
-
-    @discord.ui.button(label="✅ Sí, resetear", style=discord.ButtonStyle.danger)
-    async def confirmar(self, i: discord.Interaction, b):
-        if not es_staff(i.user): return await i.response.send_message("❌ Sin permisos.", ephemeral=True)
-        tdata = cargar_tickets(); tdata["counter"] = 0; guardar_tickets(tdata)
-        e = discord.Embed(title="🔄 Contador reseteado",
-                          description=f"El contador de tickets fue reseteado a **0**.\nAnterior: **{self.contador_actual}**.",
-                          color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
-        e.add_field(name="👮 Staff", value=i.user.mention); e.set_footer(text=ts())
-        self._disable(); await i.response.edit_message(embed=e, view=self)
-
-    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.secondary)
-    async def cancelar(self, i: discord.Interaction, b):
-        self._disable(); await i.response.edit_message(content="❌ Cancelado.", embed=None, view=self)
-
-@tree.command(name="reset-count", description="Resetear el contador de tickets a 0")
-async def reset_count(i: discord.Interaction):
-    if not es_staff(i.user): return await no_staff(i)
-    tdata = cargar_tickets(); contador_actual = tdata.get("counter", 0)
-    e = discord.Embed(title="⚠️ ¿Resetear contador de tickets?",
-                      description=f"El contador actual es **#{contador_actual}**.\nAl resetear, el próximo ticket será el **#001**.\n**Esta acción no se puede deshacer.**",
-                      color=COLORES["warn"])
-    e.set_footer(text="Expira en 30 segundos.")
-    await i.response.send_message(embed=e, view=ConfirmarResetCountView(contador_actual), ephemeral=True)
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
 
 # --- Eventos ---
 @bot.event
