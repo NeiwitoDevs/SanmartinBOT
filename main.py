@@ -647,9 +647,9 @@ async def stats_mod(i: discord.Interaction, staff: discord.Member = None):
 # --- Sistema de tickets ---
 TIPOS_TICKET = {
     "soporte_general":     ("Soporte General",      "<:member:1485682448300904668>"),
-    "soporte_tecnico":     ("Soporte Técnico",       "<:Developer:1485682311373656326"),
-    "reclamar_beneficios": ("Reclamar Beneficios",   "<:Vip:1485682412179554355>"),
-    "solicitar_superiores":("Solicitar Superiores",  "<:Owner:1485682488952098917>"),
+    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),
+    "reclamar_beneficios": ("Reclamar Beneficios",  "<:Vip:1485682412179554355>"),
+    "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
 }
 
 async def enviar_panel_tickets(canal, guild):
