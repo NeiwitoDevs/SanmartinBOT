@@ -770,8 +770,7 @@ class TicketSelect(discord.ui.Select):
         )
 
 async def callback(self, i: discord.Interaction):
-
-    await i.response.defer(ephemeral=True)
+    await i.response.defer(ephemeral=True)  # 🔥 IMPORTANTE
 
     tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
 
@@ -827,7 +826,7 @@ async def callback(self, i: discord.Interaction):
         view=TicketActionView()
     )
 
-    await i.followup.send(
+    await i.followup.send(  # 🔥 CAMBIO (antes era response)
         f"✅ Ticket creado: {canal.mention}",
         ephemeral=True
     )
