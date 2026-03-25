@@ -648,15 +648,107 @@ import discord
 from discord.ui import View, Select
 
 # --- Sistema de tickets ---
-# --- TIPOS ---
 TIPOS_TICKET = {
     "soporte_general":     ("Soporte General",      "<:member:1485682448300904668>"),
-    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),
+    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),  # FIX >
     "reclamar_beneficios": ("Reclamar Beneficios",  "<:Vip:1485682412179554355>"),
     "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
 }
 
-# --- SELECT (ÚNICO Y CORRECTO) ---
+async def enviar_panel_tickets(canal, guild):
+    e = discord.Embed(
+        title="🎫  Centro de Soporte",
+        description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
+                    "Seleccioná la categoría correspondiente en el menú de abajo.\n"
+                    "Un miembro del staff te atenderá a la brevedad.",
+        color=discord.Color.from_str("#5865F2")
+    )
+    if guild.icon:
+        e.set_thumbnail(url=guild.icon.url)
+
+    e.add_field(name="❓  Soporte General", value="Consultas generales del servidor.", inline=False)
+    e.add_field(name="🛠️  Soporte Técnico", value="Problemas técnicos o bugs.", inline=False)
+    e.add_field(name="💫  Reclamar Beneficios", value="Reclamá tus beneficios VIP u otros premios.", inline=False)
+    e.add_field(name="👑  Solicitar Superiores", value="Contacto directo con la administración.", inline=False)
+
+    e.set_footer(
+        text=f"{guild.name}  •  Solo abrí un ticket si realmente lo necesitás.",
+        icon_url=guild.icon.url if guild.icon else None
+    )
+
+    await canal.send(embed=e, view=TicketPanelView())
+
+
+class CerrarTicketModal(discord.ui.Modal, title="🔒 Cerrar ticket"):
+    motivo = discord.ui.TextInput(label="Motivo del cierre", style=discord.TextStyle.paragraph, max_length=300)
+
+    async def on_submit(self, i: discord.Interaction):
+        tdata = cargar_tickets()
+        ch_id = str(i.channel_id)
+        info = tdata["tickets"].get(ch_id)
+
+        e = discord.Embed(
+            title="🔒 Ticket cerrado",
+            description="Cerrado por el staff. El canal se eliminará en **5 segundos**.",
+            color=COLORES["ban"],
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        e.add_field(name="👮 Cerrado por", value=i.user.mention, inline=True)
+        e.add_field(name="📋 Tipo", value=info.get("tipo","?") if info else "?", inline=True)
+        e.add_field(name="🆔 Número", value=f"`#{info.get('numero','?')}`" if info else "?", inline=True)
+        e.add_field(name="📝 Motivo", value=self.motivo.value, inline=False)
+
+        e.set_footer(text=ts())
+
+        await i.response.send_message(embed=e)
+
+        if ch_id in tdata["tickets"]:
+            del tdata["tickets"][ch_id]
+            guardar_tickets(tdata)
+
+        await asyncio.sleep(5)
+
+        try:
+            await i.channel.delete()
+        except:
+            pass
+
+
+class TicketActionView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="✋ Reclamar ticket", style=discord.ButtonStyle.success, custom_id="ticket_claim_btn")
+    async def claim_btn(self, i: discord.Interaction, b):
+        if not es_staff(i.user):
+            return await i.response.send_message("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
+
+        tdata = cargar_tickets()
+        info = tdata["tickets"].get(str(i.channel_id))
+
+        if info:
+            info["reclamado_por"] = str(i.user.id)
+            guardar_tickets(tdata)
+
+        e = discord.Embed(
+            title="✋ Ticket reclamado",
+            description=f"{i.user.mention} tomó a cargo este ticket.",
+            color=COLORES["ok"],
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        e.set_footer(text=ts())
+        await i.response.send_message(embed=e)
+
+    @discord.ui.button(label="🔒 Cerrar ticket", style=discord.ButtonStyle.danger, custom_id="ticket_close_btn")
+    async def close_btn(self, i: discord.Interaction, b):
+        if not es_staff(i.user):
+            return await i.response.send_message("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
+
+        await i.response.send_modal(CerrarTicketModal())
+
+
 class TicketSelect(discord.ui.Select):
     def __init__(self):
         super().__init__(
@@ -665,59 +757,36 @@ class TicketSelect(discord.ui.Select):
             max_values=1,
             custom_id="ticket_panel_select",
             options=[
-                discord.SelectOption(
-                    label="Soporte General",
-                    value="soporte_general",
-                    description="Consultas generales",
-                    emoji=discord.PartialEmoji(name="member", id=1485682448300904668)
-                ),
-                discord.SelectOption(
-                    label="Soporte Técnico",
-                    value="soporte_tecnico",
-                    description="Problemas técnicos o bugs",
-                    emoji=discord.PartialEmoji(name="Developer", id=1485682311373656326)
-                ),
-                discord.SelectOption(
-                    label="Reclamar Beneficios",
-                    value="reclamar_beneficios",
-                    description="Beneficios VIP u otros premios",
-                    emoji=discord.PartialEmoji(name="Vip", id=1485682412179554355)
-                ),
-                discord.SelectOption(
-                    label="Solicitar Superiores",
-                    value="solicitar_superiores",
-                    description="Contactar administración",
-                    emoji=discord.PartialEmoji(name="Owner", id=1485682488952098917)
-                ),
+                discord.SelectOption(label="Soporte General", value="soporte_general",
+                                     emoji=discord.PartialEmoji(name="member", id=1485682448300904668)),
+                discord.SelectOption(label="Soporte Técnico", value="soporte_tecnico",
+                                     emoji=discord.PartialEmoji(name="Developer", id=1485682311373656326)),
+                discord.SelectOption(label="Reclamar Beneficios", value="reclamar_beneficios",
+                                     emoji=discord.PartialEmoji(name="Vip", id=1485682412179554355)),
+                discord.SelectOption(label="Solicitar Superiores", value="solicitar_superiores",
+                                     emoji=discord.PartialEmoji(name="Owner", id=1485682488952098917)),
             ]
         )
 
     async def callback(self, i: discord.Interaction):
-        # 🔥 FIX IMPORTANTE (sin emoji_id)
+        # 🔥 FIX PRINCIPAL
         tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
 
         tdata = cargar_tickets()
         uid = str(i.user.id)
 
-        # Evitar múltiples tickets
         for ch_id, info in list(tdata["tickets"].items()):
             if info.get("user_id") == uid:
                 c = i.guild.get_channel(int(ch_id))
                 if c:
-                    return await i.response.send_message(
-                        f"❌ Ya tenés un ticket abierto: {c.mention}",
-                        ephemeral=True
-                    )
-                del tdata["tickets"][ch_id]
-                guardar_tickets(tdata)
-                break
+                    return await i.response.send_message(f"❌ Ya tenés un ticket abierto: {c.mention}", ephemeral=True)
 
         tdata["counter"] += 1
         numero = f"{tdata['counter']:03d}"
 
         overwrites = {
             i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
         }
 
         role = i.guild.get_role(STAFF_ROLE_ID)
@@ -729,30 +798,22 @@ class TicketSelect(discord.ui.Select):
         canal = await i.guild.create_text_channel(
             name=f"ticket-{numero}",
             overwrites=overwrites,
-            category=categoria,
-            reason=f"Ticket #{numero} — {i.user} — {tipo_nombre}"
+            category=categoria
         )
 
-        # Guardar ticket
         tdata["tickets"][str(canal.id)] = {
             "user_id": uid,
             "tipo": tipo_nombre,
-            "numero": numero,
-            "guild_id": str(i.guild.id),
-            "fecha": ts()
+            "numero": numero
         }
+
         guardar_tickets(tdata)
 
-        # 🔥 EMBED ARREGLADO (usa emoji directo)
         embed = discord.Embed(
             title=f"{emoji} Ticket #{numero} — {tipo_nombre}",
-            description=f"¡Hola {i.user.mention}! Tu ticket fue creado.\nDescribí tu consulta.",
+            description=f"{i.user.mention}, describí tu problema.",
             color=discord.Color.from_str("#5865F2")
         )
-
-        embed.add_field(name="👤 Usuario", value=i.user.mention)
-        embed.add_field(name="📋 Tipo", value=tipo_nombre)
-        embed.add_field(name="🆔 Ticket", value=f"#{numero}")
 
         await canal.send(
             content=f"{i.user.mention} <@&{STAFF_ROLE_ID}>",
@@ -760,17 +821,13 @@ class TicketSelect(discord.ui.Select):
             view=TicketActionView()
         )
 
-        await i.response.send_message(
-            f"✅ Ticket creado: {canal.mention}",
-            ephemeral=True
-        )
+        await i.response.send_message(f"✅ Ticket creado: {canal.mention}", ephemeral=True)
 
-# --- PANEL VIEW (ÚNICO) ---
+
 class TicketPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketSelect())
-
 # --- Eventos ---
 @bot.event
 async def on_member_join(member: discord.Member):
