@@ -648,9 +648,10 @@ import discord
 from discord.ui import View, Select
 
 # --- Sistema de tickets ---
+# --- Sistema de tickets ---
 TIPOS_TICKET = {
-    "soporte_general":     ("Soporte General",      "<:member:1485682448300904668>"),
-    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),  # FIX >
+    "soporte_general":     ("Soporte General",      "<:Member:1486085000117092382>"),
+    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),
     "reclamar_beneficios": ("Reclamar Beneficios",  "<:Vip:1485682412179554355>"),
     "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
 }
@@ -758,7 +759,7 @@ class TicketSelect(discord.ui.Select):
             custom_id="ticket_panel_select",
             options=[
                 discord.SelectOption(label="Soporte General", value="soporte_general",
-                                     emoji=discord.PartialEmoji(name="member", id=1485682448300904668)),
+                                     emoji=discord.PartialEmoji(name="Member", id=1486085000117092382)),
                 discord.SelectOption(label="Soporte Técnico", value="soporte_tecnico",
                                      emoji=discord.PartialEmoji(name="Developer", id=1485682311373656326)),
                 discord.SelectOption(label="Reclamar Beneficios", value="reclamar_beneficios",
@@ -769,7 +770,6 @@ class TicketSelect(discord.ui.Select):
         )
 
     async def callback(self, i: discord.Interaction):
-        # 🔥 FIX PRINCIPAL
         tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
 
         tdata = cargar_tickets()
