@@ -861,11 +861,18 @@ async def on_member_join(member: discord.Member):
 
 @bot.event
 async def on_ready():
+    print(f"✅ {bot.user} listo | Servidores: {len(bot.guilds)}")
+
     bot.add_view(TicketPanelView())
     bot.add_view(TicketActionView())
+
     bot.loop.create_task(rotar_estado(bot))
-    await tree.sync()
-    print(f"✅ {bot.user} listo | Servidores: {len(bot.guilds)}")
+
+    try:
+        synced = await tree.sync()
+        print(f"🔁 Comandos sincronizados: {len(synced)}")
+    except Exception as e:
+        print(e)
 
 class _Health(BaseHTTPRequestHandler):
     def do_GET(self):
