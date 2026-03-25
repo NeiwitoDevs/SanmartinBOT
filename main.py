@@ -1,5 +1,4 @@
 import os, asyncio, json, discord, threading
-from status import rotar_estado
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from discord import app_commands
 from dotenv import load_dotenv
@@ -12,10 +11,11 @@ TOKEN = os.getenv("TOKEN")
 # --- IDs ---
 STAFF_ROLE_ID        = 1486086431066816582
 CANAL_AUTO_LOGS      = 1486088127389892609
+CANAL_STAFF_LOGS     = 1486451822456737822
 CANAL_COMANDOS       = 1486087293012938976
 CANAL_CALIFICACIONES = 1486087968090230875
 CANAL_BIENVENIDA     = 1486070953187348541
-CANALES_RECOMENDADOS = [1316844873680424971, 1486072018230317186, 1486073190210867373, 1486088510879432730]
+CANALES_RECOMENDADOS = [1316844873680424971, 1486072018230317186, 1486088510879432730, 1486072363513807039]
 
 COLORES = {
     "warn": discord.Color.from_str("#F5A623"), "ban":  discord.Color.from_str("#D0021B"),
@@ -67,6 +67,7 @@ async def log_ch(guild, cid, embed):
     c = guild.get_channel(cid)
     if c: await c.send(embed=embed)
 
+async def log_staff(guild, embed): await log_ch(guild, CANAL_STAFF_LOGS, embed)
 async def log_auto(guild, embed):  await log_ch(guild, CANAL_AUTO_LOGS, embed)
 
 def embed_log(tipo, staff, usuario, motivo, sid, extra=None):
@@ -153,7 +154,7 @@ async def warn(i: discord.Interaction, usuario: discord.Member, motivo: str):
     sid = registrar(usuario.id, "WARN", motivo, i.user.id)
     await enviar_dm(usuario, i.guild, "WARN", motivo, sid, i.user)
     e = embed_log("WARN", i.user, usuario, motivo, sid)
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="ban", description="Banear a un usuario")
 @app_commands.describe(usuario="Usuario", motivo="Motivo")
@@ -164,7 +165,7 @@ async def ban(i: discord.Interaction, usuario: discord.Member, motivo: str = "Si
     e = embed_log("BAN", i.user, usuario, motivo, sid)
     try: await usuario.ban(reason=f"[{sid}] {motivo}")
     except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para banear.", ephemeral=True)
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="kick", description="Expulsar a un usuario")
 @app_commands.describe(usuario="Usuario", motivo="Motivo")
@@ -175,7 +176,7 @@ async def kick(i: discord.Interaction, usuario: discord.Member, motivo: str = "S
     e = embed_log("KICK", i.user, usuario, motivo, sid)
     try: await usuario.kick(reason=f"[{sid}] {motivo}")
     except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para expulsar.", ephemeral=True)
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="mute", description="Silenciar a un usuario")
 @app_commands.describe(usuario="Usuario", minutos="Duración en minutos", motivo="Motivo")
@@ -188,7 +189,7 @@ async def mute(i: discord.Interaction, usuario: discord.Member, minutos: int, mo
     try: await usuario.timeout(discord.utils.utcnow() + timedelta(minutes=minutos), reason=f"[{sid}] {motivo}")
     except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para mutear.", ephemeral=True)
     e = embed_log("MUTE", i.user, usuario, motivo, sid, extra=f"⏳ Duración: **{dur}**")
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="unmute", description="Quitar silencio a un usuario")
 @app_commands.describe(usuario="Usuario")
@@ -202,7 +203,7 @@ async def unmute(i: discord.Interaction, usuario: discord.Member):
     e.add_field(name="👤 Usuario", value=f"{usuario.mention} (`{usuario}`)", inline=True)
     e.add_field(name="👮 Staff",   value=i.user.mention, inline=True)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="clear", description="Eliminar mensajes del canal")
 @app_commands.describe(cantidad="Cantidad (1–100)")
@@ -217,7 +218,7 @@ async def clear(i: discord.Interaction, cantidad: int):
     e.add_field(name="📋 Canal",      value=i.channel.mention,              inline=True)
     e.add_field(name="👮 Staff",      value=i.user.mention,                 inline=True)
     e.set_footer(text=ts())
-    await i.followup.send(embed=e, ephemeral=True)
+    await i.followup.send(embed=e, ephemeral=True); await log_staff(i.guild, e)
 
 @tree.command(name="lock", description="Bloquear canal")
 @app_commands.describe(motivo="Motivo")
@@ -228,7 +229,7 @@ async def lock(i: discord.Interaction, motivo: str = "Sin motivo"):
     e = discord.Embed(title="🔒 LOCK — Canal bloqueado", description=f"Bloqueado por {i.user.mention}.",
                       color=COLORES["lock"], timestamp=datetime.now(timezone.utc))
     e.add_field(name="📝 Motivo", value=motivo); e.set_footer(text=f"Staff: {i.user} • {ts()}")
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="unlock", description="Desbloquear canal")
 async def unlock(i: discord.Interaction):
@@ -238,7 +239,7 @@ async def unlock(i: discord.Interaction):
     e = discord.Embed(title="🔓 UNLOCK — Canal desbloqueado", description=f"Desbloqueado por {i.user.mention}.",
                       color=COLORES["unlock"], timestamp=datetime.now(timezone.utc))
     e.set_footer(text=f"Staff: {i.user} • {ts()}")
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="slowmode", description="Modo lento en el canal")
 @app_commands.describe(segundos="Segundos (0 = desactivar)")
@@ -254,7 +255,7 @@ async def slowmode(i: discord.Interaction, segundos: int):
     e.add_field(name="👮 Staff", value=i.user.mention, inline=True)
     e.add_field(name="📋 Canal", value=i.channel.mention, inline=True)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 # --- Warnings ---
 class BorrarSancionSelect(discord.ui.Select):
@@ -336,7 +337,7 @@ async def unban(i: discord.Interaction, usuario_id: str, motivo: str = "Sin moti
     e.add_field(name="👮 Staff",   value=i.user.mention,            inline=True)
     e.add_field(name="📝 Motivo",  value=motivo,                    inline=False)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 @tree.command(name="nick", description="Cambiar apodo de un usuario")
 @app_commands.describe(usuario="Usuario", nombre="Nuevo apodo (vacío = resetear)")
@@ -352,7 +353,7 @@ async def nick(i: discord.Interaction, usuario: discord.Member, nombre: str = No
     e.add_field(name="✅ Ahora",    value=nombre or usuario.name, inline=True)
     e.add_field(name="👮 Staff",   value=i.user.mention,       inline=True)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e, ephemeral=True)
+    await i.response.send_message(embed=e, ephemeral=True); await log_staff(i.guild, e)
 
 @tree.command(name="rol-add", description="Añadir rol a un usuario")
 @app_commands.describe(usuario="Usuario", rol="Rol")
@@ -367,7 +368,7 @@ async def rol_add(i: discord.Interaction, usuario: discord.Member, rol: discord.
     e.add_field(name="🎭 Rol",     value=rol.mention,          inline=True)
     e.add_field(name="👮 Staff",   value=i.user.mention,       inline=True)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e, ephemeral=True)
+    await i.response.send_message(embed=e, ephemeral=True); await log_staff(i.guild, e)
 
 @tree.command(name="rol-remove", description="Quitar rol a un usuario")
 @app_commands.describe(usuario="Usuario", rol="Rol")
@@ -382,7 +383,7 @@ async def rol_remove(i: discord.Interaction, usuario: discord.Member, rol: disco
     e.add_field(name="🎭 Rol",     value=rol.mention,          inline=True)
     e.add_field(name="👮 Staff",   value=i.user.mention,       inline=True)
     e.set_footer(text=ts())
-    await i.response.send_message(embed=e, ephemeral=True)
+    await i.response.send_message(embed=e, ephemeral=True); await log_staff(i.guild, e)
 
 @tree.command(name="bans", description="Lista de usuarios baneados")
 async def bans(i: discord.Interaction):
@@ -463,7 +464,7 @@ class ReporteView(discord.ui.View):
         sid = registrar(self.reportado.id, "WARN", f"Reporte: {self.motivo}", i.user.id)
         await enviar_dm(self.reportado, i.guild, "WARN", f"Reporte: {self.motivo}", sid, i.user)
         e = embed_log("WARN", i.user, self.reportado, f"Reporte: {self.motivo}", sid)
-        await i.response.send_message(embed=e, ephemeral=True)
+        await i.response.send_message(embed=e, ephemeral=True); await log_staff(i.guild, e)
         self._disable(); await i.message.edit(view=self)
 
     @discord.ui.button(label="🔇 Mute 10min", style=discord.ButtonStyle.secondary)
@@ -474,7 +475,7 @@ class ReporteView(discord.ui.View):
             await self.reportado.timeout(discord.utils.utcnow() + timedelta(minutes=10))
             await enviar_dm(self.reportado, i.guild, "MUTE", f"Reporte: {self.motivo}", sid, i.user, "10 minutos")
             e = embed_log("MUTE", i.user, self.reportado, f"Reporte: {self.motivo}", sid, extra="⏳ **10 minutos**")
-            await i.response.send_message(embed=e, ephemeral=True)
+            await i.response.send_message(embed=e, ephemeral=True); await log_staff(i.guild, e)
         except: await i.response.send_message("❌ No se pudo mutear.", ephemeral=True)
         self._disable(); await i.message.edit(view=self)
 
@@ -489,7 +490,7 @@ class ReporteView(discord.ui.View):
 async def report(i: discord.Interaction, usuario: discord.Member, motivo: str):
     if usuario.id == i.user.id: return await i.response.send_message("❌ No podés reportarte a vos mismo.", ephemeral=True)
     if usuario.bot: return await i.response.send_message("❌ No podés reportar bots.", ephemeral=True)
-    canal = i.guild.get_channel(CANAL_AUTO_LOGS)
+    canal = i.guild.get_channel(CANAL_STAFF_LOGS)
     if not canal: return await i.response.send_message("❌ Error interno.", ephemeral=True)
     e = discord.Embed(title="🚨 Nuevo reporte", description="Un miembro reportó a otro usuario.",
                       color=discord.Color.from_str("#FF4500"), timestamp=datetime.now(timezone.utc))
@@ -520,7 +521,7 @@ async def raid_mode(i: discord.Interaction, estado: app_commands.Choice[str]):
     e.add_field(name="👮 Staff", value=i.user.mention, inline=True)
     e.add_field(name="📅 Fecha", value=ts(),           inline=True)
     e.set_footer(text=i.guild.name)
-    await i.response.send_message(embed=e)
+    await i.response.send_message(embed=e); await log_staff(i.guild, e)
 
 # --- Borrar sanciones ---
 class ConfirmarBorradoView(discord.ui.View):
@@ -538,7 +539,7 @@ class ConfirmarBorradoView(discord.ui.View):
                           description=f"Se eliminaron **{self.total}** sanciones de {self.usuario.mention}.",
                           color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
         e.add_field(name="👮 Staff", value=i.user.mention); e.set_footer(text=ts())
-        self._disable(); await i.response.edit_message(embed=e, view=self)
+        self._disable(); await i.response.edit_message(embed=e, view=self); await log_staff(i.guild, e)
 
     @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.secondary)
     async def cancelar(self, i, b):
@@ -645,203 +646,115 @@ async def stats_mod(i: discord.Interaction, staff: discord.Member = None):
     e.set_footer(text=f"✦ Solicitado por {i.user}  •  {ts()}", icon_url=i.user.display_avatar.url)
     await i.response.send_message(embed=e, ephemeral=True)
 
-import discord
-from discord.ui import View, Select
-
 # --- Sistema de tickets ---
 TIPOS_TICKET = {
-    "soporte_general":     ("Soporte General",      "<:Member:1486085000117092382>"),
-    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1486084669320724480>"),
-    "reclamar_beneficios": ("Reclamar Beneficios",  "<:74658vipglow:1486084827080822865>"),
-    "solicitar_superiores":("Solicitar Superiores", "<:Owner:1486085037693734962>"),
+    "soporte_general":     ("Soporte General",      "Member",    1486085000117092382),
+    "soporte_tecnico":     ("Soporte Técnico",       "Developer", 1486084669320724480),
+    "reclamar_beneficios": ("Reclamar Beneficios",   "Vip",       1486084827080822865),
+    "solicitar_superiores":("Solicitar Superiores",  "Owner",     1486085037693734962),
 }
 
 async def enviar_panel_tickets(canal, guild):
-    e = discord.Embed(
-        title="🎫  Centro de Soporte",
-        description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
-                    "Seleccioná la categoría correspondiente en el menú de abajo.\n"
-                    "Un miembro del staff te atenderá a la brevedad.",
-        color=discord.Color.from_str("#5865F2")
-    )
-    if guild.icon:
-        e.set_thumbnail(url=guild.icon.url)
-
-    e.add_field(name="❓  Soporte General", value="Consultas generales del servidor.", inline=False)
-    e.add_field(name="🛠️  Soporte Técnico", value="Problemas técnicos o bugs.", inline=False)
-    e.add_field(name="💫  Reclamar Beneficios", value="Reclamá tus beneficios VIP u otros premios.", inline=False)
-    e.add_field(name="👑  Solicitar Superiores", value="Contacto directo con la administración.", inline=False)
-
-    e.set_footer(
-        text=f"{guild.name}  •  Solo abrí un ticket si realmente lo necesitás.",
-        icon_url=guild.icon.url if guild.icon else None
-    )
-
+    e = discord.Embed(title="🎫  Centro de Soporte",
+                      description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
+                                  "Seleccioná la categoría correspondiente en el menú de abajo.\n"
+                                  "Un miembro del staff te atenderá a la brevedad.",
+                      color=discord.Color.from_str("#5865F2"))
+    if guild.icon: e.set_thumbnail(url=guild.icon.url)
+    e.add_field(name="<:Member:1486085000117092382>  Soporte General",     value="Consultas generales del servidor.",          inline=False)
+    e.add_field(name="<:Developer:1486084669320724480>  Soporte Técnico",  value="Problemas técnicos o bugs.",                 inline=False)
+    e.add_field(name="<:Vip:1486084827080822865>  Reclamar Beneficios",    value="Reclamá tus beneficios VIP u otros premios.",inline=False)
+    e.add_field(name="<:Owner:1486085037693734962>  Solicitar Superiores", value="Contacto directo con la administración.",    inline=False)
+    e.set_footer(text=f"{guild.name}  •  Solo abrí un ticket si realmente lo necesitás.",
+                 icon_url=guild.icon.url if guild.icon else None)
     await canal.send(embed=e, view=TicketPanelView())
-
 
 class CerrarTicketModal(discord.ui.Modal, title="🔒 Cerrar ticket"):
     motivo = discord.ui.TextInput(label="Motivo del cierre", style=discord.TextStyle.paragraph, max_length=300)
 
     async def on_submit(self, i: discord.Interaction):
-        tdata = cargar_tickets()
-        ch_id = str(i.channel_id)
-        info = tdata["tickets"].get(ch_id)
-
-        e = discord.Embed(
-            title="🔒 Ticket cerrado",
-            description="Cerrado por el staff. El canal se eliminará en **5 segundos**.",
-            color=COLORES["ban"],
-            timestamp=datetime.now(timezone.utc)
-        )
-
-        e.add_field(name="👮 Cerrado por", value=i.user.mention, inline=True)
-        e.add_field(name="📋 Tipo", value=info.get("tipo","?") if info else "?", inline=True)
-        e.add_field(name="🆔 Número", value=f"`#{info.get('numero','?')}`" if info else "?", inline=True)
-        e.add_field(name="📝 Motivo", value=self.motivo.value, inline=False)
-
+        tdata = cargar_tickets(); ch_id = str(i.channel_id); info = tdata["tickets"].get(ch_id)
+        e = discord.Embed(title="🔒 Ticket cerrado",
+                          description="Cerrado por el staff. El canal se eliminará en **5 segundos**.",
+                          color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
+        e.add_field(name="👮 Cerrado por", value=i.user.mention,                                                     inline=True)
+        e.add_field(name="📋 Tipo",        value=info.get("tipo","?") if info else "?",                             inline=True)
+        e.add_field(name="🆔 Número",      value=f"`#{info.get('numero','?')}`" if info else "?",                   inline=True)
+        e.add_field(name="📝 Motivo",      value=self.motivo.value,                                                 inline=False)
         e.set_footer(text=ts())
-
         await i.response.send_message(embed=e)
-
-        if ch_id in tdata["tickets"]:
-            del tdata["tickets"][ch_id]
-            guardar_tickets(tdata)
-
+        if ch_id in tdata["tickets"]: del tdata["tickets"][ch_id]; guardar_tickets(tdata)
         await asyncio.sleep(5)
-
-        try:
-            await i.channel.delete()
-        except:
-            pass
-
+        try: await i.channel.delete()
+        except: pass
 
 class TicketActionView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+    def __init__(self): super().__init__(timeout=None)
 
     @discord.ui.button(label="✋ Reclamar ticket", style=discord.ButtonStyle.success, custom_id="ticket_claim_btn")
     async def claim_btn(self, i: discord.Interaction, b):
-        if not es_staff(i.user):
-            return await i.response.send_message("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
-
-        tdata = cargar_tickets()
-        info = tdata["tickets"].get(str(i.channel_id))
-
-        if info:
-            info["reclamado_por"] = str(i.user.id)
-            guardar_tickets(tdata)
-
-        e = discord.Embed(
-            title="✋ Ticket reclamado",
-            description=f"{i.user.mention} tomó a cargo este ticket.",
-            color=COLORES["ok"],
-            timestamp=datetime.now(timezone.utc)
-        )
-
-        e.set_footer(text=ts())
+        if not es_staff(i.user): return await i.response.send_message("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
+        tdata = cargar_tickets(); info = tdata["tickets"].get(str(i.channel_id))
+        if info: info["reclamado_por"] = str(i.user.id); guardar_tickets(tdata)
+        e = discord.Embed(title="✋ Ticket reclamado",
+                          description=f"{i.user.mention} tomó a cargo este ticket y lo atenderá a la brevedad.",
+                          color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
+        e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url); e.set_footer(text=ts())
         await i.response.send_message(embed=e)
 
     @discord.ui.button(label="🔒 Cerrar ticket", style=discord.ButtonStyle.danger, custom_id="ticket_close_btn")
     async def close_btn(self, i: discord.Interaction, b):
-        if not es_staff(i.user):
-            return await i.response.send_message("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
-
+        if not es_staff(i.user): return await i.response.send_message("❌ Solo el staff puede cerrar tickets.", ephemeral=True)
         await i.response.send_modal(CerrarTicketModal())
-
 
 class TicketSelect(discord.ui.Select):
     def __init__(self):
-        super().__init__(
-            placeholder="📋 Seleccioná el tipo de ticket...",
-            min_values=1,
-            max_values=1,
-            custom_id="ticket_panel_select",
-            options=[
-                discord.SelectOption(label="Soporte General", value="soporte_general",
-                                     emoji=discord.PartialEmoji(name="Member", id=1486085000117092382)),
-                discord.SelectOption(label="Soporte Técnico", value="soporte_tecnico",
-                                     emoji=discord.PartialEmoji(name="Developer", id=1486084669320724480)),
-                discord.SelectOption(label="Reclamar Beneficios", value="reclamar_beneficios",
-                                     emoji=discord.PartialEmoji(name="74658vipglow", id=1486084827080822865)),
-                discord.SelectOption(label="Solicitar Superiores", value="solicitar_superiores",
-                                     emoji=discord.PartialEmoji(name="Owner", id=1486085037693734962)),
-            ]
-        )
+        super().__init__(placeholder="📋  Seleccioná el tipo de ticket...", min_values=1, max_values=1,
+                         custom_id="ticket_panel_select", options=[
+            discord.SelectOption(label="Soporte General",      value="soporte_general",      emoji=discord.PartialEmoji(name="member",    id=1485682448300904668), description="Consultas generales"),
+            discord.SelectOption(label="Soporte Técnico",      value="soporte_tecnico",      emoji=discord.PartialEmoji(name="Developer",  id=1485682311373656326), description="Problemas técnicos o bugs"),
+            discord.SelectOption(label="Reclamar Beneficios",  value="reclamar_beneficios",  emoji=discord.PartialEmoji(name="Vip",        id=1485682412179554355), description="Beneficios VIP u otros premios"),
+            discord.SelectOption(label="Solicitar Superiores", value="solicitar_superiores", emoji=discord.PartialEmoji(name="Owner",      id=1485682488952098917), description="Contactar administración"),
+        ])
 
-async def callback(self, i: discord.Interaction):
-    await i.response.defer(ephemeral=True)  # 🔥 SIEMPRE PRIMERO
-
-    try:
-        tipo_nombre, emoji = TIPOS_TICKET[self.values[0]]
-
-        tdata = cargar_tickets()
-        uid = str(i.user.id)
-
+    async def callback(self, i: discord.Interaction):
+        tipo_nombre, emoji_name, emoji_id = TIPOS_TICKET[self.values[0]]
+        tdata = cargar_tickets(); uid = str(i.user.id)
         for ch_id, info in list(tdata["tickets"].items()):
             if info.get("user_id") == uid:
                 c = i.guild.get_channel(int(ch_id))
-                if c:
-                    return await i.followup.send(
-                        f"❌ Ya tenés un ticket abierto: {c.mention}",
-                        ephemeral=True
-                    )
-
-        tdata["counter"] += 1
-        numero = f"{tdata['counter']:03d}"
-
+                if c: return await i.response.send_message(f"❌ Ya tenés un ticket abierto: {c.mention}", ephemeral=True)
+                del tdata["tickets"][ch_id]; guardar_tickets(tdata); break
+        tdata["counter"] += 1; numero = f"{tdata['counter']:03d}"
         overwrites = {
             i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, attach_files=True),
         }
-
         role = i.guild.get_role(STAFF_ROLE_ID)
-        if role:
-            overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-
-        categoria = i.guild.get_channel(1486148358228672582)
-
-        canal = await i.guild.create_text_channel(
-            name=f"ticket-{numero}",
-            overwrites=overwrites,
-            category=categoria
-        )
-
-        tdata["tickets"][str(canal.id)] = {
-            "user_id": uid,
-            "tipo": tipo_nombre,
-            "numero": numero
-        }
-
+        if role: overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
+        categoria = i.guild.get_channel(1466491475436245220)
+        try:
+            canal = await i.guild.create_text_channel(f"ticket-{numero}", overwrites=overwrites, category=categoria,
+                                                       reason=f"Ticket #{numero} — {i.user} — {tipo_nombre}")
+        except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para crear el canal.", ephemeral=True)
+        tdata["tickets"][str(canal.id)] = {"user_id": uid, "tipo": tipo_nombre, "numero": numero, "guild_id": str(i.guild.id), "fecha": ts()}
         guardar_tickets(tdata)
-
-        embed = discord.Embed(
-            title=f"{emoji} Ticket #{numero} — {tipo_nombre}",
-            description=f"{i.user.mention}, describí tu problema.",
-            color=discord.Color.from_str("#5865F2")
-        )
-
-        await canal.send(
-            content=f"{i.user.mention} <@&{STAFF_ROLE_ID}>",
-            embed=embed,
-            view=TicketActionView()
-        )
-
-        await i.followup.send(
-            f"✅ Ticket creado: {canal.mention}",
-            ephemeral=True
-        )
-
-    except Exception as e:
-        await i.followup.send(
-            f"❌ Error al crear el ticket:\n```{e}```",
-            ephemeral=True
-        )
+        e = discord.Embed(title=f"<:{emoji_name}:{emoji_id}>  Ticket #{numero} — {tipo_nombre}",
+                          description=f"¡Hola {i.user.mention}! Tu ticket fue creado.\nDescribí tu consulta con el mayor detalle posible.",
+                          color=discord.Color.from_str("#5865F2"), timestamp=datetime.now(timezone.utc))
+        e.set_thumbnail(url=i.user.display_avatar.url)
+        e.add_field(name="👤 Abierto por", value=f"{i.user.mention} (`{i.user}`)", inline=True)
+        e.add_field(name="📋 Categoría",   value=tipo_nombre,                      inline=True)
+        e.add_field(name="🆔 Número",      value=f"`#{numero}`",                   inline=True)
+        e.add_field(name="📌 Instrucciones",
+                    value="• Describí tu caso claramente.\n• Adjuntá capturas si es necesario.\n• Sé respetuoso con el staff.", inline=False)
+        e.set_footer(text=f"Abierto el {ts()}")
+        await canal.send(content=f"{i.user.mention} — <@&{STAFF_ROLE_ID}>", embed=e, view=TicketActionView())
+        await i.response.send_message(f"✅ Ticket creado correctamente: {canal.mention}", ephemeral=True)
 
 class TicketPanelView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(TicketSelect())
+    def __init__(self): super().__init__(timeout=None); self.add_item(TicketSelect())
+
 # --- Eventos ---
 @bot.event
 async def on_member_join(member: discord.Member):
@@ -869,24 +782,16 @@ async def on_member_join(member: discord.Member):
         e.add_field(name="👤 Usuario", value=f"`{member}` — `{member.id}`",          inline=True)
         e.add_field(name="📅 Cuenta",  value=member.created_at.strftime("%d/%m/%Y"), inline=True)
         e.set_footer(text="Usá /unmute si es legítimo.")
-        c = member.guild.get_channel(CANAL_AUTO_LOGS)
+        c = member.guild.get_channel(CANAL_STAFF_LOGS)
         if c: await c.send(embed=e)
     except: pass
 
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user} listo | Servidores: {len(bot.guilds)}")
-
     bot.add_view(TicketPanelView())
     bot.add_view(TicketActionView())
-
-    bot.loop.create_task(rotar_estado(bot))
-
-    try:
-        synced = await tree.sync()
-        print(f"🔁 Comandos sincronizados: {len(synced)}")
-    except Exception as e:
-        print(e)
+    await tree.sync()
+    print(f"✅ {bot.user} listo | Servidores: {len(bot.guilds)}")
 
 class _Health(BaseHTTPRequestHandler):
     def do_GET(self):
