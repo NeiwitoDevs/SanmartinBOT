@@ -732,7 +732,7 @@ class TicketSelect(discord.ui.Select):
         }
         role = i.guild.get_role(STAFF_ROLE_ID)
         if role: overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
-        categoria = i.guild.get_channel(1466491475436245220)
+        categoria = i.guild.get_channel(1486148358228672582)
         try:
             canal = await i.guild.create_text_channel(f"ticket-{numero}", overwrites=overwrites, category=categoria,
                                                        reason=f"Ticket #{numero} — {i.user} — {tipo_nombre}")
