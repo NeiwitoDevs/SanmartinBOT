@@ -1,4 +1,5 @@
 import os, asyncio, json, discord, threading
+from status import rotar_estado
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from discord import app_commands
 from dotenv import load_dotenv
@@ -648,12 +649,11 @@ import discord
 from discord.ui import View, Select
 
 # --- Sistema de tickets ---
-# --- Sistema de tickets ---
 TIPOS_TICKET = {
     "soporte_general":     ("Soporte General",      "<:Member:1486085000117092382>"),
-    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1485682311373656326>"),
-    "reclamar_beneficios": ("Reclamar Beneficios",  "<:Vip:1485682412179554355>"),
-    "solicitar_superiores":("Solicitar Superiores", "<:Owner:1485682488952098917>"),
+    "soporte_tecnico":     ("Soporte Técnico",      "<:Developer:1486084669320724480>"),
+    "reclamar_beneficios": ("Reclamar Beneficios",  "<:74658vipglow:1486084827080822865>"),
+    "solicitar_superiores":("Solicitar Superiores", "<:Owner:1486085037693734962>"),
 }
 
 async def enviar_panel_tickets(canal, guild):
@@ -761,11 +761,11 @@ class TicketSelect(discord.ui.Select):
                 discord.SelectOption(label="Soporte General", value="soporte_general",
                                      emoji=discord.PartialEmoji(name="Member", id=1486085000117092382)),
                 discord.SelectOption(label="Soporte Técnico", value="soporte_tecnico",
-                                     emoji=discord.PartialEmoji(name="Developer", id=1485682311373656326)),
+                                     emoji=discord.PartialEmoji(name="Developer", id=1486084669320724480)),
                 discord.SelectOption(label="Reclamar Beneficios", value="reclamar_beneficios",
-                                     emoji=discord.PartialEmoji(name="Vip", id=1485682412179554355)),
+                                     emoji=discord.PartialEmoji(name="74658vipglow", id=1486084827080822865)),
                 discord.SelectOption(label="Solicitar Superiores", value="solicitar_superiores",
-                                     emoji=discord.PartialEmoji(name="Owner", id=1485682488952098917)),
+                                     emoji=discord.PartialEmoji(name="Owner", id=1486085037693734962)),
             ]
         )
 
@@ -863,6 +863,7 @@ async def on_member_join(member: discord.Member):
 async def on_ready():
     bot.add_view(TicketPanelView())
     bot.add_view(TicketActionView())
+    bot.loop.create_task(rotar_estado(bot))
     await tree.sync()
     print(f"✅ {bot.user} listo | Servidores: {len(bot.guilds)}")
 
