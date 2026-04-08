@@ -84,43 +84,78 @@ def embed_log(tipo, staff, usuario, motivo, sid, extra=None):
     e.set_footer(text=f"Fecha: {ts()}"); return e
 
 async def enviar_dm(user, guild, tipo, motivo, sid, staff, duracion=None):
-    iconos = {"WARN":"⚠️","BAN":"🔨","KICK":"👢","MUTE":"🔇","AUTO-FLOOD":"🤖","AUTO-SPAM":"🤖"}
-    descs  = {
-        "WARN":"Has recibido una **advertencia** en el servidor.",
-        "BAN":"Has sido **baneado permanentemente** del servidor.",
-        "KICK":"Has sido **expulsado** del servidor.",
-        "MUTE":f"Has sido **silenciado**{f' por **{duracion}**' if duracion else ''} en el servidor.",
-        "AUTO-FLOOD":"El sistema automático detectó **flood** en tus mensajes.",
-        "AUTO-SPAM":"El sistema detectó un **link no permitido** en tus mensajes.",
+    iconos  = {"WARN":"⚠️","BAN":"🔨","KICK":"👢","MUTE":"🔇","AUTO-FLOOD":"🤖","AUTO-SPAM":"🤖"}
+    colores = {
+        "WARN": discord.Color.from_str("#F5A623"),
+        "BAN":  discord.Color.from_str("#D0021B"),
+        "KICK": discord.Color.from_str("#E85D04"),
+        "MUTE": discord.Color.from_str("#7B2D8B"),
+        "AUTO-FLOOD": discord.Color.from_str("#E74C3C"),
+        "AUTO-SPAM":  discord.Color.from_str("#E74C3C"),
     }
-    sn = staff.display_name if hasattr(staff,"display_name") else str(staff)
-    st = str(staff) if hasattr(staff,"name") else "Sistema Automático"
-    e = discord.Embed(title=f"{iconos.get(tipo,'🚫')} Sanción — {tipo}",
-                      description=f"{descs.get(tipo,'Recibiste una sanción.')}\n\nContactá un administrador si fue un error.",
-                      color=COLORES.get(tipo.lower().replace("auto-","auto"), COLORES["auto"]), timestamp=datetime.now(timezone.utc))
-    e.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
-    if hasattr(staff,"display_avatar"): e.set_thumbnail(url=staff.display_avatar.url)
-    e.add_field(name="🏠 Servidor", value=guild.name, inline=True)
-    e.add_field(name="📋 Tipo",     value=tipo,       inline=True)
-    e.add_field(name="🆔 ID",       value=f"`{sid}`", inline=True)
-    e.add_field(name="📝 Motivo",   value=motivo,     inline=False)
-    e.add_field(name="👮 Staff",    value=f"{sn} (`{st}`)", inline=True)
-    e.add_field(name="📅 Fecha",    value=ts(),       inline=True)
-    if duracion: e.add_field(name="⏳ Duración", value=duracion, inline=True)
-    e.set_footer(text="No respondas — mensaje automático.")
+    descs = {
+        "WARN":       "Has recibido una **advertencia formal** en el servidor.\nAcumulá sanciones y las consecuencias serán mayores.",
+        "BAN":        "Has sido **baneado permanentemente** del servidor.\nSi creés que es un error, contactá a la administración.",
+        "KICK":       "Has sido **expulsado** del servidor.\nPodés volver a unirte, pero tené cuidado con las reglas.",
+        "MUTE":       f"Has sido **silenciado**{f' por **{duracion}**' if duracion else ''} en el servidor.\nDurante este tiempo no podrás enviar mensajes ni hablar en VC.",
+        "AUTO-FLOOD": "El sistema automático detectó **flood** en tus mensajes.\nEnviar demasiados mensajes en poco tiempo no está permitido.",
+        "AUTO-SPAM":  "El sistema detectó un **link no permitido** en tus mensajes.\nCompartir links está restringido en este servidor.",
+    }
+    sn = staff.display_name if hasattr(staff, "display_name") else str(staff)
+    st = str(staff) if hasattr(staff, "name") else "Sistema Automático"
+    icono = iconos.get(tipo, "🚫")
+    color = colores.get(tipo, discord.Color.from_str("#E74C3C"))
+    desc  = descs.get(tipo, "Has recibido una sanción en el servidor.")
+
+    e = discord.Embed(
+        title=f"{icono}  Notificación de Sanción",
+        description=f"```\n  {guild.name.upper()}\n```\n{desc}",
+        color=color, timestamp=datetime.now(timezone.utc))
+    if guild.icon: e.set_author(name=guild.name, icon_url=guild.icon.url)
+    if hasattr(staff, "display_avatar"): e.set_thumbnail(url=staff.display_avatar.url)
+    e.add_field(name="┌ 🏠 Servidor",  value=f"┕ **{guild.name}**",            inline=True)
+    e.add_field(name="┌ 📋 Sanción",   value=f"┕ **{tipo}**",                   inline=True)
+    e.add_field(name="┌ 🆔 Caso",      value=f"┕ `{sid}`",                      inline=True)
+    e.add_field(name="┌ 📝 Motivo",    value=f"┕ {motivo}",                     inline=False)
+    e.add_field(name="┌ 👮 Ejecutado por", value=f"┕ {sn} (`{st}`)",            inline=True)
+    e.add_field(name="┌ 📅 Fecha",     value=f"┕ {ts()}",                       inline=True)
+    if duracion: e.add_field(name="┌ ⏳ Duración", value=f"┕ **{duracion}**",   inline=True)
+    e.set_footer(text="⚙️ Mensaje automático — No respondas a este DM.")
+    if guild.icon: e.set_image(url=None)
     try: await user.send(embed=e)
     except: pass
 
 # --- Auto-mod ---
 user_msgs = defaultdict(lambda: deque(maxlen=5))
 
-def automod_embed(titulo, autor, sid, canal):
-    e = discord.Embed(title=titulo, color=COLORES["auto"], timestamp=datetime.now(timezone.utc))
+def automod_nivel(uid):
+    data = cargar()
+    count = sum(1 for s in data.get(str(uid), []) if s["tipo"] in ("AUTO-FLOOD", "AUTO-SPAM"))
+    return count
+
+def automod_duracion(nivel):
+    if nivel == 0:   return timedelta(minutes=15),  "15 minutos"
+    elif nivel == 1: return timedelta(minutes=60),  "1 hora"
+    elif nivel == 2: return timedelta(hours=6),     "6 horas"
+    else:            return timedelta(hours=24),    "24 horas"
+
+def automod_embed(titulo, autor, sid, canal, motivo_extra="", nivel=0, duracion_str=""):
+    e = discord.Embed(
+        title=titulo,
+        description=f"Se detectó una infracción automática y se aplicó una sanción.",
+        color=COLORES["auto"], timestamp=datetime.now(timezone.utc))
+    e.set_author(name="Sistema AutoMod", icon_url=autor.display_avatar.url)
     e.set_thumbnail(url=autor.display_avatar.url)
-    e.add_field(name="👤 Usuario", value=f"{autor.mention} (`{autor}`)", inline=True)
-    e.add_field(name="🆔 ID",      value=f"`{sid}`",                     inline=True)
-    e.add_field(name="📋 Canal",   value=canal.mention,                  inline=True)
-    e.set_footer(text=ts()); return e
+    e.add_field(name="┌ 👤 Usuario",    value=f"┕ {autor.mention}\n`{autor}` — `{autor.id}`", inline=True)
+    e.add_field(name="┌ 📋 Canal",      value=f"┕ {canal.mention}",                           inline=True)
+    e.add_field(name="┌ 🆔 Caso",       value=f"┕ `{sid}`",                                   inline=True)
+    if duracion_str:
+        e.add_field(name="┌ ⏳ Mute aplicado", value=f"┕ **{duracion_str}** (chat + VC)",    inline=True)
+    e.add_field(name="┌ 📊 Nivel infracción", value=f"┕ Ofensa #{nivel + 1}",                inline=True)
+    if motivo_extra:
+        e.add_field(name="┌ 📝 Detalle", value=f"┕ {motivo_extra}",                          inline=False)
+    e.set_footer(text=f"⚙️ AutoMod  •  {ts()}")
+    return e
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -131,20 +166,40 @@ async def on_message(message: discord.Message):
         if es_staff(message.author): await enviar_panel_tickets(message.channel, message.guild)
         return
     if isinstance(message.author, discord.Member) and es_staff(message.author): return
+
     now = datetime.now().timestamp()
     user_msgs[message.author.id].append(now)
+
+    # --- Anti-Flood ---
     if len(user_msgs[message.author.id]) >= 5 and now - user_msgs[message.author.id][0] <= 5:
         try: await message.delete()
         except: pass
-        sid = registrar(message.author.id, "AUTO-FLOOD", "Flood detectado", "Sistema")
-        await enviar_dm(message.author, message.guild, "AUTO-FLOOD", "Enviaste demasiados mensajes en poco tiempo.", sid, "Sistema Automático")
-        await log_auto(message.guild, automod_embed("🤖 Flood detectado", message.author, sid, message.channel)); return
+        nivel = automod_nivel(message.author.id)
+        dur_td, dur_str = automod_duracion(nivel)
+        sid = registrar(message.author.id, "AUTO-FLOOD", f"Flood detectado (ofensa #{nivel+1})", "Sistema")
+        if isinstance(message.author, discord.Member):
+            try: await message.author.timeout(discord.utils.utcnow() + dur_td, reason=f"[AutoMod] Flood — {sid}")
+            except: pass
+        await enviar_dm(message.author, message.guild, "AUTO-FLOOD",
+                        f"Enviaste demasiados mensajes en poco tiempo. Silenciado por **{dur_str}**.", sid, "Sistema Automático", duracion=dur_str)
+        await log_auto(message.guild, automod_embed("🤖 AutoMod — Flood detectado", message.author, sid, message.channel,
+                                                    motivo_extra="Demasiados mensajes en muy poco tiempo.", nivel=nivel, duracion_str=dur_str))
+        return
+
+    # --- Anti-Spam (links) ---
     if "http://" in message.content or "https://" in message.content:
         try: await message.delete()
         except: pass
-        sid = registrar(message.author.id, "AUTO-SPAM", "Link no permitido", "Sistema")
-        await enviar_dm(message.author, message.guild, "AUTO-SPAM", "No se permiten links en este servidor.", sid, "Sistema Automático")
-        await log_auto(message.guild, automod_embed("🤖 Link detectado", message.author, sid, message.channel))
+        nivel = automod_nivel(message.author.id)
+        dur_td, dur_str = automod_duracion(nivel)
+        sid = registrar(message.author.id, "AUTO-SPAM", f"Link no permitido (ofensa #{nivel+1})", "Sistema")
+        if isinstance(message.author, discord.Member):
+            try: await message.author.timeout(discord.utils.utcnow() + dur_td, reason=f"[AutoMod] Spam link — {sid}")
+            except: pass
+        await enviar_dm(message.author, message.guild, "AUTO-SPAM",
+                        f"Enviaste un link no permitido. Silenciado por **{dur_str}**.", sid, "Sistema Automático", duracion=dur_str)
+        await log_auto(message.guild, automod_embed("🤖 AutoMod — Link no permitido", message.author, sid, message.channel,
+                                                    motivo_extra="Link detectado en el mensaje.", nivel=nivel, duracion_str=dur_str))
 
 # --- Comandos de moderación ---
 @tree.command(name="warn", description="Advertir a un usuario")
@@ -655,17 +710,37 @@ TIPOS_TICKET = {
 }
 
 async def enviar_panel_tickets(canal, guild):
-    e = discord.Embed(title="🎫  Centro de Soporte",
-                      description=f"¡Bienvenido al sistema de tickets de **{guild.name}**!\n\n"
-                                  "Seleccioná la categoría correspondiente en el menú de abajo.\n"
-                                  "Un miembro del staff te atenderá a la brevedad.",
-                      color=discord.Color.from_str("#5865F2"))
+    e = discord.Embed(
+        title="🎫  Centro de Soporte",
+        description=(
+            f"```\n  {guild.name.upper()}  —  SOPORTE OFICIAL\n```\n"
+            "¿Necesitás ayuda? Seleccioná la categoría en el menú de abajo.\n"
+            "Un miembro del staff te atenderá lo antes posible.\n\n"
+            "**📌 Antes de abrir un ticket:**\n"
+            "┣ Revisá si tu duda ya fue respondida en los canales.\n"
+            "┣ Describí tu problema claramente.\n"
+            "┗ Adjuntá capturas si es necesario."
+        ),
+        color=discord.Color.from_str("#5865F2"))
     if guild.icon: e.set_thumbnail(url=guild.icon.url)
-    e.add_field(name="<:Member:1486085000117092382>  Soporte General",     value="Consultas generales del servidor.",          inline=False)
-    e.add_field(name="<:Developer:1486084669320724480>  Soporte Técnico",  value="Problemas técnicos o bugs.",                 inline=False)
-    e.add_field(name="<:Vip:1486084827080822865>  Reclamar Beneficios",    value="Reclamá tus beneficios VIP u otros premios.",inline=False)
-    e.add_field(name="<:Owner:1486085037693734962>  Solicitar Superiores", value="Contacto directo con la administración.",    inline=False)
-    e.set_footer(text=f"{guild.name}  •  Solo abrí un ticket si realmente lo necesitás.",
+    e.add_field(
+        name="<:Member:1486085000117092382>  Soporte General",
+        value="┗ Consultas generales, dudas y ayuda básica.",
+        inline=False)
+    e.add_field(
+        name="<:Developer:1486084669320724480>  Soporte Técnico",
+        value="┗ Problemas técnicos, bugs o errores del servidor.",
+        inline=False)
+    e.add_field(
+        name="<:Vip:1486084827080822865>  Reclamar Beneficios",
+        value="┗ Reclamá tus beneficios VIP, rangos u otros premios.",
+        inline=False)
+    e.add_field(
+        name="<:Owner:1486085037693734962>  Solicitar Superiores",
+        value="┗ Contacto directo con la administración del servidor.",
+        inline=False)
+    e.add_field(name="\u200b", value="⚠️ **Solo abrí un ticket si realmente lo necesitás.**", inline=False)
+    e.set_footer(text=f"⚙️ {guild.name}  •  Sistema de Tickets",
                  icon_url=guild.icon.url if guild.icon else None)
     await canal.send(embed=e, view=TicketPanelView())
 
@@ -674,15 +749,49 @@ class CerrarTicketModal(discord.ui.Modal, title="🔒 Cerrar ticket"):
 
     async def on_submit(self, i: discord.Interaction):
         tdata = cargar_tickets(); ch_id = str(i.channel_id); info = tdata["tickets"].get(ch_id)
-        e = discord.Embed(title="🔒 Ticket cerrado",
-                          description="Cerrado por el staff. El canal se eliminará en **5 segundos**.",
-                          color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
-        e.add_field(name="👮 Cerrado por", value=i.user.mention,                                                     inline=True)
-        e.add_field(name="📋 Tipo",        value=info.get("tipo","?") if info else "?",                             inline=True)
-        e.add_field(name="🆔 Número",      value=f"`#{info.get('numero','?')}`" if info else "?",                   inline=True)
-        e.add_field(name="📝 Motivo",      value=self.motivo.value,                                                 inline=False)
-        e.set_footer(text=ts())
+        tipo    = info.get("tipo", "?") if info else "?"
+        numero  = info.get("numero", "?") if info else "?"
+        user_id = int(info.get("user_id", 0)) if info else 0
+
+        e = discord.Embed(
+            title="🔒  Ticket Cerrado",
+            description=(
+                f"```\n  TICKET #{numero} CERRADO\n```\n"
+                "Este ticket fue cerrado por el staff.\n"
+                "El canal se eliminará en **5 segundos**."
+            ),
+            color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
+        e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url)
+        e.add_field(name="┌ 👮 Cerrado por", value=f"┕ {i.user.mention}",   inline=True)
+        e.add_field(name="┌ 📋 Categoría",   value=f"┕ {tipo}",             inline=True)
+        e.add_field(name="┌ 🆔 Ticket",      value=f"┕ `#{numero}`",        inline=True)
+        e.add_field(name="┌ 📝 Motivo",      value=f"┕ {self.motivo.value}", inline=False)
+        e.set_footer(text=f"⚙️ {ts()}")
         await i.response.send_message(embed=e)
+
+        # DM al dueño del ticket
+        if user_id:
+            try:
+                owner = await bot.fetch_user(user_id)
+                dm_e = discord.Embed(
+                    title="🔒  Tu ticket fue cerrado",
+                    description=(
+                        f"```\n  TICKET #{numero} — {tipo.upper()}\n```\n"
+                        "Un miembro del staff cerró tu ticket.\n"
+                        "Si necesitás más ayuda, podés abrir uno nuevo."
+                    ),
+                    color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
+                if i.guild.icon: dm_e.set_author(name=i.guild.name, icon_url=i.guild.icon.url)
+                dm_e.set_thumbnail(url=i.user.display_avatar.url)
+                dm_e.add_field(name="┌ 🏠 Servidor",    value=f"┕ **{i.guild.name}**",       inline=True)
+                dm_e.add_field(name="┌ 📋 Categoría",   value=f"┕ {tipo}",                  inline=True)
+                dm_e.add_field(name="┌ 🆔 Ticket",      value=f"┕ `#{numero}`",             inline=True)
+                dm_e.add_field(name="┌ 👮 Cerrado por", value=f"┕ {i.user.display_name}",   inline=True)
+                dm_e.add_field(name="┌ 📝 Motivo",      value=f"┕ {self.motivo.value}",     inline=False)
+                dm_e.set_footer(text="⚙️ Mensaje automático — No respondas a este DM.")
+                await owner.send(embed=dm_e)
+            except: pass
+
         if ch_id in tdata["tickets"]: del tdata["tickets"][ch_id]; guardar_tickets(tdata)
         await asyncio.sleep(5)
         try: await i.channel.delete()
@@ -695,12 +804,42 @@ class TicketActionView(discord.ui.View):
     async def claim_btn(self, i: discord.Interaction, b):
         if not es_staff(i.user): return await i.response.send_message("❌ Solo el staff puede reclamar tickets.", ephemeral=True)
         tdata = cargar_tickets(); info = tdata["tickets"].get(str(i.channel_id))
+        if info and info.get("reclamado_por"):
+            return await i.response.send_message("❌ Este ticket ya fue reclamado.", ephemeral=True)
+        numero  = info.get("numero", "?") if info else "?"
+        tipo    = info.get("tipo", "?") if info else "?"
+        user_id = int(info.get("user_id", 0)) if info else 0
         if info: info["reclamado_por"] = str(i.user.id); guardar_tickets(tdata)
-        e = discord.Embed(title="✋ Ticket reclamado",
-                          description=f"{i.user.mention} tomó a cargo este ticket y lo atenderá a la brevedad.",
-                          color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
-        e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url); e.set_footer(text=ts())
+        e = discord.Embed(
+            title="✋  Ticket Reclamado",
+            description=f"{i.user.mention} tomó a cargo este ticket.\n**Será atendido a la brevedad.**",
+            color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
+        e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url)
+        e.set_thumbnail(url=i.user.display_avatar.url)
+        e.add_field(name="┌ 👮 Staff asignado", value=f"┕ {i.user.mention} (`{i.user}`)", inline=True)
+        e.add_field(name="┌ 🆔 Ticket",         value=f"┕ `#{numero}`",                   inline=True)
+        e.set_footer(text=f"⚙️ {ts()}")
         await i.response.send_message(embed=e)
+        # DM al dueño del ticket
+        if user_id:
+            try:
+                owner = await bot.fetch_user(user_id)
+                dm_e = discord.Embed(
+                    title="✋  Tu ticket fue reclamado",
+                    description=(
+                        f"```\n  TICKET #{numero} — {tipo.upper()}\n```\n"
+                        "Un miembro del staff tomó a cargo tu ticket.\n"
+                        "Te atenderá a la brevedad, ¡por favor mantené el canal activo!"
+                    ),
+                    color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
+                if i.guild.icon: dm_e.set_author(name=i.guild.name, icon_url=i.guild.icon.url)
+                dm_e.set_thumbnail(url=i.user.display_avatar.url)
+                dm_e.add_field(name="┌ 🏠 Servidor",       value=f"┕ **{i.guild.name}**",          inline=True)
+                dm_e.add_field(name="┌ 👮 Staff asignado", value=f"┕ {i.user.display_name}",       inline=True)
+                dm_e.add_field(name="┌ 🆔 Ticket",         value=f"┕ `#{numero}` — {tipo}",        inline=False)
+                dm_e.set_footer(text="⚙️ Mensaje automático — No respondas a este DM.")
+                await owner.send(embed=dm_e)
+            except: pass
 
     @discord.ui.button(label="🔒 Cerrar ticket", style=discord.ButtonStyle.danger, custom_id="ticket_close_btn")
     async def close_btn(self, i: discord.Interaction, b):
@@ -739,21 +878,185 @@ class TicketSelect(discord.ui.Select):
         except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para crear el canal.", ephemeral=True)
         tdata["tickets"][str(canal.id)] = {"user_id": uid, "tipo": tipo_nombre, "numero": numero, "guild_id": str(i.guild.id), "fecha": ts()}
         guardar_tickets(tdata)
-        e = discord.Embed(title=f"<:{emoji_name}:{emoji_id}>  Ticket #{numero} — {tipo_nombre}",
-                          description=f"¡Hola {i.user.mention}! Tu ticket fue creado.\nDescribí tu consulta con el mayor detalle posible.",
-                          color=discord.Color.from_str("#5865F2"), timestamp=datetime.now(timezone.utc))
+        e = discord.Embed(
+            title=f"<:{emoji_name}:{emoji_id}>  Ticket #{numero} — {tipo_nombre}",
+            description=(
+                f"```\n  TICKET #{numero} ABIERTO\n```\n"
+                f"¡Hola {i.user.mention}! Tu ticket fue creado correctamente.\n"
+                "Por favor describí tu consulta con el mayor detalle posible.\n"
+                "Un miembro del staff te atenderá pronto."
+            ),
+            color=discord.Color.from_str("#5865F2"), timestamp=datetime.now(timezone.utc))
+        e.set_author(name=i.guild.name, icon_url=i.guild.icon.url if i.guild.icon else None)
         e.set_thumbnail(url=i.user.display_avatar.url)
-        e.add_field(name="👤 Abierto por", value=f"{i.user.mention} (`{i.user}`)", inline=True)
-        e.add_field(name="📋 Categoría",   value=tipo_nombre,                      inline=True)
-        e.add_field(name="🆔 Número",      value=f"`#{numero}`",                   inline=True)
-        e.add_field(name="📌 Instrucciones",
-                    value="• Describí tu caso claramente.\n• Adjuntá capturas si es necesario.\n• Sé respetuoso con el staff.", inline=False)
-        e.set_footer(text=f"Abierto el {ts()}")
+        e.add_field(name="┌ 👤 Abierto por", value=f"┕ {i.user.mention}\n`{i.user}` — `{i.user.id}`", inline=True)
+        e.add_field(name="┌ 📋 Categoría",   value=f"┕ {tipo_nombre}",                                 inline=True)
+        e.add_field(name="┌ 🆔 Número",      value=f"┕ `#{numero}`",                                   inline=True)
+        e.add_field(name="┌ 📌 Instrucciones",
+                    value="┣ Describí tu caso con el mayor detalle posible.\n"
+                          "┣ Adjuntá capturas de pantalla si es necesario.\n"
+                          "┣ Sé respetuoso con el staff en todo momento.\n"
+                          "┗ No compartas información personal innecesaria.", inline=False)
+        e.set_footer(text=f"⚙️ Abierto el {ts()}")
         await canal.send(content=f"{i.user.mention} — <@&{STAFF_ROLE_ID}>", embed=e, view=TicketActionView())
         await i.response.send_message(f"✅ Ticket creado correctamente: {canal.mention}", ephemeral=True)
 
 class TicketPanelView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None); self.add_item(TicketSelect())
+
+# --- Comandos de tickets adicionales ---
+@tree.command(name="reset-count", description="Resetea el contador de tickets (Ticket-001 de nuevo)")
+async def reset_count(i: discord.Interaction):
+    if not es_staff(i.user): return await no_staff(i)
+    tdata = cargar_tickets()
+    anterior = tdata.get("counter", 0)
+    tdata["counter"] = 0
+    guardar_tickets(tdata)
+    e = discord.Embed(
+        title="🔄  Contador de Tickets Reseteado",
+        description="El contador fue reseteado a **0**.\nEl próximo ticket creado será `Ticket-001`.",
+        color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
+    e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url)
+    e.add_field(name="┌ 📊 Valor anterior", value=f"┕ `#{anterior:03d}`", inline=True)
+    e.add_field(name="┌ 🔄 Valor actual",   value=f"┕ `#000`",            inline=True)
+    e.add_field(name="┌ 👮 Ejecutado por",  value=f"┕ {i.user.mention}",  inline=True)
+    e.set_footer(text=f"⚙️ {ts()}")
+    await i.response.send_message(embed=e, ephemeral=True)
+    await log_staff(i.guild, e)
+
+# --- Comandos de moderación adicionales ---
+@tree.command(name="tempban", description="Banear a un usuario temporalmente (auto-desbanear)")
+@app_commands.describe(usuario="Usuario", minutos="Minutos de ban", motivo="Motivo")
+async def tempban(i: discord.Interaction, usuario: discord.Member, minutos: int, motivo: str = "Sin motivo"):
+    if not es_staff(i.user): return await no_staff(i)
+    if not 1 <= minutos <= 10080:
+        return await i.response.send_message("❌ Entre 1 y 10080 minutos (7 días).", ephemeral=True)
+    dur = f"{minutos} minuto{'s' if minutos != 1 else ''}"
+    sid = registrar(usuario.id, "BAN", f"[TEMPBAN {dur}] {motivo}", i.user.id)
+    await enviar_dm(usuario, i.guild, "BAN", f"[Ban temporal de {dur}] {motivo}", sid, i.user)
+    try: await usuario.ban(reason=f"[TEMPBAN {dur}] [{sid}] {motivo}")
+    except discord.Forbidden: return await i.response.send_message("❌ Sin permisos para banear.", ephemeral=True)
+    e = discord.Embed(title="⏱️  TEMPBAN — Ban Temporal", color=COLORES["ban"], timestamp=datetime.now(timezone.utc))
+    e.set_author(name=str(i.user), icon_url=i.user.display_avatar.url)
+    e.set_thumbnail(url=usuario.display_avatar.url)
+    e.add_field(name="┌ 👤 Usuario",    value=f"┕ {usuario.mention}\n`{usuario}` — `{usuario.id}`", inline=True)
+    e.add_field(name="┌ 👮 Staff",      value=f"┕ {i.user.mention}",                                inline=True)
+    e.add_field(name="┌ 🆔 Caso",       value=f"┕ `{sid}`",                                         inline=True)
+    e.add_field(name="┌ ⏳ Duración",   value=f"┕ **{dur}**",                                       inline=True)
+    e.add_field(name="┌ 📝 Motivo",     value=f"┕ {motivo}",                                        inline=False)
+    e.set_footer(text=f"⚙️ Se desbaneará automáticamente en {dur}.")
+    await i.response.send_message(embed=e)
+    await log_staff(i.guild, e)
+    await asyncio.sleep(minutos * 60)
+    try:
+        await i.guild.unban(usuario, reason=f"[TEMPBAN] Expiró — {sid}")
+        eu = discord.Embed(title="✅ TEMPBAN expirado", description=f"{usuario.mention} (`{usuario}`) fue desbaneado automáticamente.",
+                           color=COLORES["ok"], timestamp=datetime.now(timezone.utc))
+        eu.add_field(name="┌ 🆔 Caso original", value=f"┕ `{sid}`", inline=True)
+        eu.set_footer(text=f"⚙️ {ts()}")
+        await log_staff(i.guild, eu)
+    except: pass
+
+@tree.command(name="announce", description="Enviar un anuncio embebido a un canal")
+@app_commands.describe(canal="Canal de destino", titulo="Título del anuncio", mensaje="Contenido", color="Color hex (ej: #FF0000)")
+async def announce(i: discord.Interaction, canal: discord.TextChannel, titulo: str, mensaje: str, color: str = "#5865F2"):
+    if not es_staff(i.user): return await no_staff(i)
+    try: col = discord.Color.from_str(color)
+    except: col = discord.Color.from_str("#5865F2")
+    e = discord.Embed(title=f"📢  {titulo}", description=mensaje, color=col, timestamp=datetime.now(timezone.utc))
+    if i.guild.icon: e.set_author(name=i.guild.name, icon_url=i.guild.icon.url)
+    e.set_footer(text=f"📣 Anuncio oficial  •  {i.guild.name}", icon_url=i.guild.icon.url if i.guild.icon else None)
+    try:
+        await canal.send(embed=e)
+        conf = discord.Embed(title="✅ Anuncio enviado", description=f"El anuncio fue enviado a {canal.mention}.",
+                             color=COLORES["ok"])
+        conf.add_field(name="┌ 📋 Canal",   value=f"┕ {canal.mention}",  inline=True)
+        conf.add_field(name="┌ 👮 Staff",   value=f"┕ {i.user.mention}", inline=True)
+        conf.set_footer(text=ts())
+        await i.response.send_message(embed=conf, ephemeral=True)
+        await log_staff(i.guild, conf)
+    except discord.Forbidden:
+        await i.response.send_message("❌ Sin permisos para escribir en ese canal.", ephemeral=True)
+
+@tree.command(name="buscar", description="Buscar un usuario por nombre o ID")
+@app_commands.describe(busqueda="Nombre de usuario, apodo o ID")
+async def buscar(i: discord.Interaction, busqueda: str):
+    if not es_staff(i.user): return await no_staff(i)
+    await i.response.defer(ephemeral=True)
+    resultados = []
+    for m in i.guild.members:
+        if (busqueda.lower() in m.name.lower()
+                or (m.nick and busqueda.lower() in m.nick.lower())
+                or busqueda == str(m.id)):
+            resultados.append(m)
+    if not resultados:
+        return await i.followup.send("❌ No se encontraron usuarios con esa búsqueda.", ephemeral=True)
+    e = discord.Embed(title=f"🔍  Resultados — \"{busqueda}\"",
+                      description=f"Se encontraron **{len(resultados)}** resultado(s). Mostrando los primeros 10.",
+                      color=COLORES["info"], timestamp=datetime.now(timezone.utc))
+    for m in resultados[:10]:
+        sanciones = len(cargar().get(str(m.id), []))
+        e.add_field(
+            name=f"{m.display_name} (`{m}`)",
+            value=f"┣ 🆔 `{m.id}`\n┣ ⚠️ Sanciones: **{sanciones}**\n┗ 📅 Unido: {m.joined_at.strftime('%d/%m/%Y') if m.joined_at else '?'}",
+            inline=True)
+    e.set_footer(text=f"⚙️ Solicitado por {i.user}  •  {ts()}")
+    await i.followup.send(embed=e, ephemeral=True)
+
+@tree.command(name="ticket-info", description="Ver información de un ticket abierto")
+async def ticket_info(i: discord.Interaction):
+    if not es_staff(i.user): return await no_staff(i)
+    tdata = cargar_tickets()
+    info = tdata["tickets"].get(str(i.channel_id))
+    if not info:
+        return await i.response.send_message("❌ Este canal no es un ticket activo.", ephemeral=True)
+    e = discord.Embed(title="🎫  Información del Ticket", color=discord.Color.from_str("#5865F2"), timestamp=datetime.now(timezone.utc))
+    try:
+        owner = await bot.fetch_user(int(info.get("user_id", 0)))
+        e.set_thumbnail(url=owner.display_avatar.url)
+        e.add_field(name="┌ 👤 Dueño", value=f"┕ {owner.mention}\n`{owner}` — `{owner.id}`", inline=True)
+    except:
+        e.add_field(name="┌ 👤 Dueño", value=f"┕ `{info.get('user_id','?')}`", inline=True)
+    e.add_field(name="┌ 📋 Categoría",    value=f"┕ {info.get('tipo','?')}",          inline=True)
+    e.add_field(name="┌ 🆔 Número",       value=f"┕ `#{info.get('numero','?')}`",     inline=True)
+    e.add_field(name="┌ 📅 Abierto el",   value=f"┕ {info.get('fecha','?')}",         inline=True)
+    reclamado = info.get("reclamado_por")
+    if reclamado:
+        try:
+            st = await bot.fetch_user(int(reclamado))
+            e.add_field(name="┌ ✋ Reclamado por", value=f"┕ {st.mention} (`{st}`)", inline=True)
+        except:
+            e.add_field(name="┌ ✋ Reclamado por", value=f"┕ `{reclamado}`", inline=True)
+    else:
+        e.add_field(name="┌ ✋ Estado",  value="┕ Sin reclamar", inline=True)
+    e.set_footer(text=f"⚙️ Contador total: #{tdata.get('counter', 0):03d}")
+    await i.response.send_message(embed=e, ephemeral=True)
+
+@tree.command(name="automod-stats", description="Ver estadísticas del automod de un usuario")
+@app_commands.describe(usuario="Usuario")
+async def automod_stats(i: discord.Interaction, usuario: discord.Member):
+    if not es_staff(i.user): return await no_staff(i)
+    data = cargar()
+    sanciones_auto = [s for s in data.get(str(usuario.id), []) if s["tipo"] in ("AUTO-FLOOD", "AUTO-SPAM")]
+    floods = [s for s in sanciones_auto if s["tipo"] == "AUTO-FLOOD"]
+    spams  = [s for s in sanciones_auto if s["tipo"] == "AUTO-SPAM"]
+    nivel  = len(sanciones_auto)
+    if nivel < len(sanciones_auto): pass
+    _, dur_str = automod_duracion(nivel)
+    e = discord.Embed(title=f"🤖  AutoMod — {usuario.display_name}",
+                      description=f"Historial de infracciones automáticas de {usuario.mention}.",
+                      color=COLORES["auto"], timestamp=datetime.now(timezone.utc))
+    e.set_thumbnail(url=usuario.display_avatar.url)
+    e.add_field(name="┌ 🌊 Flood",        value=f"┕ **{len(floods)}** infracción(es)",    inline=True)
+    e.add_field(name="┌ 🔗 Spam (links)", value=f"┕ **{len(spams)}** infracción(es)",     inline=True)
+    e.add_field(name="┌ 📊 Total",        value=f"┕ **{nivel}** infracción(es)",          inline=True)
+    e.add_field(name="┌ ⚠️ Nivel actual", value=f"┕ Ofensa #{nivel + 1} → **{dur_str}**", inline=False)
+    if sanciones_auto:
+        ultimas = sanciones_auto[-3:]
+        txt = "\n".join(f"┣ `{s['id']}` — {s['tipo']} — {s['fecha']}" for s in ultimas)
+        e.add_field(name="┌ 🕐 Últimas infracciones", value=f"{txt}\n┗ *(últimas 3)*", inline=False)
+    e.set_footer(text=f"⚙️ Solicitado por {i.user}  •  {ts()}")
+    await i.response.send_message(embed=e, ephemeral=True)
 
 # --- Eventos ---
 @bot.event
